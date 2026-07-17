@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
+  <title>UPI Payment Calculator</title>
+  <!-- Google Material Icons -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <!-- QRCode.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <style>
+    /* ----- CSS VARIABLES (light) ----- */
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body { background: #f4f7fc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; transition: background 0.3s; }
+    .app-container { width: 100%; max-width: 480px; background: #ffffff; border-radius: 40px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15); overflow: hidden; padding: 20px 20px 28px; transition: background 0.3s, box-shadow 0.3s; }
+    /* dark mode */
+    body.dark { background: #0b1a1a; }
+    body.dark .app-container { background: #172b2b; box-shadow: 0 25px 50px -12px rgba(0, 20, 10, 0.8); }
+    body.dark .card, body.dark .glass-card { background: rgba(30, 50, 50, 0.6); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.03); }
+    body.dark .calc-display { background: #0f2121; color: #e6f7f0; }
+    body.dark .keypad button { background: #1f3a3a; color: #d4ece5; box-shadow: 0 4px 6px rgba(0,0,0,0.4); }
+    body.dark .keypad button:active { background: #2c4f4f; }
+    body.dark .btn-pay { background: #1db954; color: #0b1a1a; }
+    body.dark .settings-field input, body.dark .settings-field textarea { background: #1f3a3a; color: #e0f0ea; border-color: #2d5555; }
+    body.dark .history-item { background: #1f3535; border-bottom: 1px solid #2d4a4a; }
+    body.dark .settings-card { background: #1f3535; }
+    /* cards */
+    .card { background: #ffffff; border-radius: 24px; padding: 18px; margin-bottom: 18px; box-shadow: 0 8px 20px rgba(0, 30, 20, 0.04); transition: background 0.3s; }
+    .glass-card { background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.2); }
+    /* header */
+    .header { display: flex; justify-content: space-between; align-items: center; padding: 4px 0 12px; }
+    .logo-area { display: flex; align-items: center; gap: 10px; }
+    .logo-icon { background: #0f3b3b; color: white; width: 40px; height: 40px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 600; }
+    .app-title { font-weight: 700; font-size: 20px; letter-spacing: -0.3px; color: #0a2e2e; }
+    body.dark .app-title { color: #d4f0e8; }
+    .header-actions { display: flex; gap: 12px; }
+    .header-actions .material-icons { font-size: 28px; color: #2b5a5a; cursor: pointer; transition: 0.2s; }
+    body.dark .header-actions .material-icons { color: #b0d4cc; }
+    /* display */
+    .calc-display { background: #eaf5f0; border-radius: 24px; padding: 18px 20px; margin-bottom: 16px; text-align: right; min-height: 90px; display: flex; flex-direction: column; justify-content: flex-end; transition: background 0.3s; }
+    .calc-display .total-label { font-size: 14px; color: #2b5a5a; opacity: 0.6; letter-spacing: 0.3px; }
+    .calc-display .total-amount { font-size: 44px; font-weight: 700; color: #0a2e2e; line-height: 1.2; word-break: break-all; }
+    body.dark .calc-display .total-amount { color: #d4f0e8; }
+    body.dark .calc-display .total-label { color: #a0c4bb; }
+    /* keypad */
+    .keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 12px 0 20px; }
+    .keypad button { background: #f2f8f5; border: none; border-radius: 20px; padding: 18px 0; font-size: 26px; font-weight: 500; color: #0f3b3b; box-shadow: 0 4px 8px rgba(0, 30, 20, 0.03); transition: all 0.12s; cursor: pointer; touch-action: manipulation; }
+    .keypad button:active { transform: scale(0.94); background: #d9e9e2; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .keypad .operator { background: #d4ebe3; color: #0f3b3b; font-weight: 600; }
+    .keypad .action-btn { background: #e0ece6; color: #1d4a4a; }
+    .keypad .equal-btn { background: #0f3b3b; color: white; font-weight: 700; }
+    body.dark .keypad .equal-btn { background: #1db954; color: #0b1a1a; }
+    .btn-pay { width: 100%; padding: 18px; border: none; border-radius: 40px; background: #0f3b3b; color: white; font-size: 22px; font-weight: 700; letter-spacing: 0.5px; box-shadow: 0 12px 24px -8px rgba(15, 59, 59, 0.3); transition: all 0.2s; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn-pay:active { transform: scale(0.97); box-shadow: 0 6px 12px -4px rgba(15, 59, 59, 0.4); }
+    body.dark .btn-pay { background: #1db954; color: #0b1a1a; }
+    /* settings */
+    .settings-field { margin-bottom: 18px; }
+    .settings-field label { display: block; font-size: 14px; font-weight: 600; color: #1d4a4a; margin-bottom: 6px; }
+    body.dark .settings-field label { color: #b0d4cc; }
+    .settings-field input, .settings-field textarea { width: 100%; padding: 14px 16px; border: 1.5px solid #ddeae6; border-radius: 20px; font-size: 16px; background: white; transition: 0.2s; }
+    .settings-field input:focus, .settings-field textarea:focus { outline: none; border-color: #0f3b3b; box-shadow: 0 0 0 3px rgba(15, 59, 59, 0.1); }
+    .settings-actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0 4px; }
+    .settings-actions button { flex: 1; padding: 14px; border: none; border-radius: 40px; font-weight: 600; font-size: 16px; background: #eaf5f0; color: #0f3b3b; transition: 0.15s; cursor: pointer; }
+    .settings-actions .btn-primary { background: #0f3b3b; color: white; }
+    body.dark .settings-actions .btn-primary { background: #1db954; color: #0b1a1a; }
+    .settings-actions button:active { transform: scale(0.96); }
+    /* QR screen */
+    .qr-container { display: flex; flex-direction: column; align-items: center; padding: 12px 0; }
+    #qrCodePreview { background: white; padding: 16px; border-radius: 32px; box-shadow: 0 12px 30px rgba(0,0,0,0.08); margin: 8px 0; }
+    .qr-info { text-align: center; margin: 10px 0; }
+    .qr-info p { margin: 4px 0; font-size: 16px; color: #1d4a4a; }
+    body.dark .qr-info p { color: #c0e0d8; }
+    .qr-actions { display: flex; gap: 16px; margin: 16px 0 8px; flex-wrap: wrap; justify-content: center; }
+    .qr-actions button { background: #eaf5f0; border: none; padding: 12px 24px; border-radius: 40px; font-weight: 600; display: flex; align-items: center; gap: 6px; cursor: pointer; transition: 0.15s; }
+    .qr-actions button:active { transform: scale(0.95); }
+    body.dark .qr-actions button { background: #1f3a3a; color: #d4ece5; }
+    /* history */
+    .history-list { max-height: 300px; overflow-y: auto; }
+    .history-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #e2eee9; }
+    .history-item .left { display: flex; flex-direction: column; }
+    .history-item .amount { font-weight: 700; font-size: 18px; }
+    .history-item .note { font-size: 14px; color: #3d6b6b; }
+    body.dark .history-item .note { color: #a0c4bb; }
+    .history-item .time { font-size: 13px; color: #6b8f8f; }
+    .history-item .del { color: #b34a4a; cursor: pointer; font-size: 22px; }
+    .history-actions { display: flex; gap: 12px; margin: 8px 0 4px; flex-wrap: wrap; }
+    .history-actions button { background: #eaf5f0; border: none; padding: 10px 20px; border-radius: 30px; font-weight: 500; cursor: pointer; }
+    body.dark .history-actions button { background: #1f3a3a; color: #d4ece5; }
+    .search-box { width: 100%; padding: 12px 16px; border-radius: 40px; border: 1.5px solid #ddeae6; margin-bottom: 12px; font-size: 16px; background: white; }
+    body.dark .search-box { background: #1f3a3a; color: #e0f0ea; border-color: #2d5555; }
+    /* tabs */
+    .tab-bar { display: flex; gap: 8px; margin: 16px 0 8px; background: #eaf5f0; border-radius: 40px; padding: 6px; }
+    body.dark .tab-bar { background: #1f3a3a; }
+    .tab-bar button { flex: 1; padding: 12px; border: none; border-radius: 40px; background: transparent; font-weight: 600; font-size: 15px; color: #2b5a5a; cursor: pointer; transition: 0.15s; }
+    body.dark .tab-bar button { color: #b0d4cc; }
+    .tab-bar button.active { background: white; color: #0f3b3b; box-shadow: 0 4px 10px rgba(0,0,0,0.02); }
+    body.dark .tab-bar button.active { background: #0f3b3b; color: #d4f0e8; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .toast { background: #0f3b3b; color: white; padding: 12px 20px; border-radius: 60px; position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); box-shadow: 0 12px 30px rgba(0,0,0,0.2); font-weight: 500; opacity: 0; transition: 0.25s; pointer-events: none; }
+    body.dark .toast { background: #1db954; color: #0b1a1a; }
+    .toast.show { opacity: 1; bottom: 40px; }
+    .hidden { display: none; }
+    .flex-center { display: flex; align-items: center; justify-content: center; }
+    .mt-8 { margin-top: 8px; }
+    .mb-8 { margin-bottom: 8px; }
+    .text-muted { color: #4f7a7a; }
+    body.dark .text-muted { color: #9fc0b8; }
+    /* footer / developer credit */
+    .footer-credit { text-align: center; padding: 14px 0 4px; font-size: 14px; color: #4f7a7a; border-top: 1px solid #e2eee9; margin-top: 10px; }
+    body.dark .footer-credit { color: #9fc0b8; border-top-color: #2d4a4a; }
+    .footer-credit a { color: #0f3b3b; text-decoration: none; font-weight: 600; transition: 0.2s; }
+    body.dark .footer-credit a { color: #b0d4cc; }
+    .footer-credit a:hover { text-decoration: underline; }
+    /* responsive */
+    @media (max-width: 420px) { .app-container { padding: 16px; } .keypad button { padding: 14px 0; font-size: 22px; } .calc-display .total-amount { font-size: 36px; } }
+  </style>
+</head>
+<body>
+<div id="app" class="app-container">
+  <!-- Header -->
+  <div class="header">
+    <div class="logo-area">
+      <div class="logo-icon">₹</div>
+      <span class="app-title">UPI Pay</span>
+    </div>
+    <div class="header-actions">
+      <span class="material-icons" id="themeToggle">dark_mode</span>
+      <span class="material-icons" id="settingsNav">settings</span>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast">✅ Saved</div>
+
+  <!-- Pages -->
+  <!-- HOME -->
+  <div id="homePage" class="page active">
+    <div class="card calc-display">
+      <div class="total-label">TOTAL</div>
+      <div class="total-amount" id="totalDisplay">0</div>
+    </div>
+    <div class="keypad" id="keypad">
+      <button data-value="7">7</button><button data-value="8">8</button><button data-value="9">9</button><button class="operator" data-value="+">+</button>
+      <button data-value="4">4</button><button data-value="5">5</button><button data-value="6">6</button><button class="operator" data-value="-">−</button>
+      <button data-value="1">1</button><button data-value="2">2</button><button data-value="3">3</button><button class="operator" data-value="*">×</button>
+      <button data-value="0">0</button><button data-value=".">.</button><button class="action-btn" id="clearBtn">C</button><button class="operator" data-value="/">÷</button>
+      <button class="action-btn" id="backspaceBtn">⌫</button><button class="equal-btn" id="equalBtn">=</button>
+    </div>
+    <button class="btn-pay" id="payNowBtn"><span class="material-icons">payments</span> PAY NOW</button>
+    
+    <!-- Developer Credit -->
+    <div class="footer-credit">
+      Developed by <a href="https://www.instagram.com/ranaj_biswas123" target="_blank" rel="noopener noreferrer">@ranaj_biswas123</a>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="settingsPage" class="page">
+    <div class="settings-card card">
+      <div class="settings-field"><label>Receiver Name</label><input id="receiverName" placeholder="e.g. John Doe" /></div>
+      <div class="settings-field"><label>UPI ID</label><input id="upiId" placeholder="example@upi" /></div>
+      <div class="settings-field"><label>Payment Note</label><textarea id="paymentNote" rows="2" placeholder="Payment for ..."></textarea></div>
+      <div class="settings-field"><label>Currency</label><input id="currency" value="INR" disabled style="background:#f0f5f2;" /></div>
+      <div class="settings-actions">
+        <button class="btn-primary" id="saveSettingsBtn">💾 Save</button>
+        <button id="updateSettingsBtn">🔄 Update</button>
+        <button id="deleteSettingsBtn" style="background:#f0dede;">🗑 Delete</button>
+      </div>
+      <div id="qrPreviewContainer" class="qr-container" style="margin-top:12px;"></div>
+    </div>
+    <!-- Credit also on settings page -->
+    <div class="footer-credit">
+      Developed by <a href="https://www.instagram.com/ranaj_biswas123" target="_blank" rel="noopener noreferrer">@ranaj_biswas123</a>
+    </div>
+  </div>
+
+  <!-- QR SCREEN -->
+  <div id="qrPage" class="page">
+    <div class="card" style="text-align:center;">
+      <div id="qrCodePreview" class="qr-container"></div>
+      <div class="qr-info"><p><strong id="qrReceiver">Receiver</strong></p><p id="qrUpi">UPI: </p><p id="qrAmount">₹0.00</p></div>
+      <div class="qr-actions">
+        <button id="downloadQrBtn"><span class="material-icons">download</span> Download</button>
+        <button id="shareQrBtn"><span class="material-icons">share</span> Share</button>
+        <button id="backFromQrBtn"><span class="material-icons">arrow_back</span> Back</button>
+      </div>
+    </div>
+    <div class="footer-credit">
+      Developed by <a href="https://www.instagram.com/ranaj_biswas123" target="_blank" rel="noopener noreferrer">@ranaj_biswas123</a>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div id="historyPage" class="page">
+    <div class="card">
+      <input class="search-box" id="historySearch" placeholder="🔍 Search by note..." />
+      <div class="history-actions"><button id="deleteAllHistory">🗑 Delete All</button></div>
+      <div class="history-list" id="historyList"></div>
+    </div>
+    <div class="footer-credit">
+      Developed by <a href="https://www.instagram.com/ranaj_biswas123" target="_blank" rel="noopener noreferrer">@ranaj_biswas123</a>
+    </div>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="active" data-page="homePage"><span class="material-icons">home</span> Home</button>
+    <button data-page="historyPage"><span class="material-icons">history</span> History</button>
+    <button data-page="settingsPage"><span class="material-icons">settings</span> Settings</button>
+  </div>
+</div>
+
+<script>
+  (function(){
+    "use strict";
+
+    // ----- FIREBASE CONFIG (exactly as provided) -----
+    const firebaseConfig = {
+      apiKey: "AIzaSyA6Zq5Vz5Vz5Vz5Vz5Vz5Vz5Vz5Vz5Vz5",
+      authDomain: "upi-calc-9a8b7.firebaseapp.com",
+      projectId: "upi-calc-9a8b7",
+      storageBucket: "upi-calc-9a8b7.appspot.com",
+      messagingSenderId: "123456789012",
+      appId: "1:123456789012:web:abcdef123456"
+    };
+    let firestore = null, db = null;
+    let firebaseAvailable = false;
+    try {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+      firestore = db.collection('upiData');
+      firebaseAvailable = true;
+      console.log('🔥 Firebase connected');
+    } catch (e) { console.warn('⚠️ Firebase fallback', e); }
+
+    // ----- DOM refs -----
+    const $ = id => document.getElementById(id);
+    const totalDisplay = $('totalDisplay');
+    const keypad = $('keypad');
+    const payNowBtn = $('payNowBtn');
+    const receiverName = $('receiverName');
+    const upiId = $('upiId');
+    const paymentNote = $('paymentNote');
+    const currency = $('currency');
+    const saveSettingsBtn = $('saveSettingsBtn');
+    const updateSettingsBtn = $('updateSettingsBtn');
+    const deleteSettingsBtn = $('deleteSettingsBtn');
+    const qrPreviewContainer = $('qrPreviewContainer');
+    const qrCodePreview = $('qrCodePreview');
+    const qrReceiver = $('qrReceiver');
+    const qrUpi = $('qrUpi');
+    const qrAmount = $('qrAmount');
+    const downloadQrBtn = $('downloadQrBtn');
+    const shareQrBtn = $('shareQrBtn');
+    const backFromQrBtn = $('backFromQrBtn');
+    const historyList = $('historyList');
+    const historySearch = $('historySearch');
+    const deleteAllHistory = $('deleteAllHistory');
+    const themeToggle = $('themeToggle');
+    const settingsNav = $('settingsNav');
+    const toast = $('toast');
+
+    // ----- State -----
+    let expression = '';
+    let currentTotal = 0;
+    let isResultShown = false;
+
+    // ----- LocalStorage helpers -----
+    function getSettings() {
+      try { return JSON.parse(localStorage.getItem('upiSettings')) || {}; } catch { return {}; }
+    }
+    function saveSettingsToLS(settings) {
+      localStorage.setItem('upiSettings', JSON.stringify(settings));
+    }
+    function getHistory() {
+      try { return JSON.parse(localStorage.getItem('upiHistory')) || []; } catch { return []; }
+    }
+    function saveHistoryToLS(history) {
+      localStorage.setItem('upiHistory', JSON.stringify(history));
+    }
+
+    // ----- Toast -----
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toast._timer);
+      toast._timer = setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    // ----- FIXED CALCULATOR LOGIC (no auto-total, only on '=') -----
+    function computeTotal(expr) {
+      try {
+        let sanitized = expr.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-');
+        const result = new Function(`return (${sanitized})`)();
+        if (typeof result !== 'number' || isNaN(result) || !isFinite(result)) return 0;
+        return parseFloat(result.toFixed(10));
+      } catch (e) {
+        return 0;
+      }
+    }
+
+    function updateDisplay() {
+      if (isResultShown) {
+        totalDisplay.textContent = currentTotal.toFixed(2);
+        return;
+      }
+      const displayVal = expression || '0';
+      totalDisplay.textContent = displayVal;
+    }
+
+    function handleEqual() {
+      if (!expression) {
+        currentTotal = 0;
+        isResultShown = true;
+        totalDisplay.textContent = '0.00';
+        return;
+      }
+      const result = computeTotal(expression);
+      if (!isNaN(result) && isFinite(result)) {
+        currentTotal = result;
+        isResultShown = true;
+        totalDisplay.textContent = currentTotal.toFixed(2);
+      } else {
+        showToast('⚠️ Error');
+      }
+    }
+
+    keypad.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const val = btn.dataset.value;
+
+      if (isResultShown) {
+        if (val !== undefined && !['+','-','*','/','×','÷','−'].includes(val)) {
+          expression = val;
+          isResultShown = false;
+          updateDisplay();
+          return;
+        } else if (['+','-','*','/','×','÷','−'].includes(val)) {
+          expression = String(currentTotal) + val;
+          isResultShown = false;
+          updateDisplay();
+          return;
+        }
+      }
+
+      if (val !== undefined) {
+        expression += val;
+        isResultShown = false;
+        updateDisplay();
+      } else if (btn.id === 'clearBtn') {
+        expression = '';
+        currentTotal = 0;
+        isResultShown = false;
+        updateDisplay();
+      } else if (btn.id === 'backspaceBtn') {
+        if (isResultShown) {
+          expression = '';
+          currentTotal = 0;
+          isResultShown = false;
+          updateDisplay();
+        } else {
+          expression = expression.slice(0, -1);
+          updateDisplay();
+        }
+      } else if (btn.id === 'equalBtn') {
+        handleEqual();
+      }
+    });
+
+    // ----- Payment flow: generate QR -----
+    function generateUPIURI(upi, name, amount, note) {
+      if (!upi) return '';
+      const encodedNote = encodeURIComponent(note || 'Payment');
+      return `upi://pay?pa=${upi}&pn=${encodeURIComponent(name || '')}&am=${amount}&cu=INR&tn=${encodedNote}`;
+    }
+
+    function showQRScreen(amount, upi, name, note) {
+      const uri = generateUPIURI(upi, name, amount, note);
+      if (!uri) { showToast('⚠️ UPI ID missing'); return; }
+      switchPage('qrPage');
+      qrReceiver.textContent = name || 'Receiver';
+      qrUpi.textContent = 'UPI: ' + upi;
+      qrAmount.textContent = '₹' + parseFloat(amount).toFixed(2);
+      qrCodePreview.innerHTML = '';
+      const container = qrCodePreview;
+      new QRCode(container, {
+        text: uri,
+        width: 220,
+        height: 220,
+        colorDark: '#0f3b3b',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    }
+
+    // ----- PAY NOW (uses currentTotal from calculator) -----
+    payNowBtn.addEventListener('click', () => {
+      let amount = currentTotal;
+      if (!isResultShown && expression) {
+        amount = computeTotal(expression);
+        if (isNaN(amount) || !isFinite(amount)) amount = 0;
+      }
+      if (amount <= 0) {
+        showToast('⚠️ Amount is zero or invalid');
+        return;
+      }
+      const settings = getSettings();
+      const upi = settings.upiId || '';
+      const name = settings.receiverName || '';
+      const note = settings.paymentNote || 'Payment';
+      if (!upi) { showToast('⚠️ Set UPI ID in settings'); return; }
+
+      const history = getHistory();
+      history.push({ amount, note, date: new Date().toLocaleDateString(), time: new Date().toLocaleTimeString(), id: Date.now() });
+      saveHistoryToLS(history);
+      if (firebaseAvailable && firestore) {
+        firestore.add({ amount, note, date: new Date().toISOString(), upi }).catch(()=>{});
+      }
+      showQRScreen(amount, upi, name, note);
+    });
+
+    // ----- Settings (unchanged) -----
+    function loadSettingsToUI() {
+      const s = getSettings();
+      receiverName.value = s.receiverName || '';
+      upiId.value = s.upiId || '';
+      paymentNote.value = s.paymentNote || '';
+      currency.value = s.currency || 'INR';
+      generateStaticQRPreview(s);
+    }
+    function generateStaticQRPreview(settings) {
+      qrPreviewContainer.innerHTML = '';
+      if (!settings.upiId) return;
+      const uri = generateUPIURI(settings.upiId, settings.receiverName, '0', settings.paymentNote);
+      if (!uri) return;
+      const container = document.createElement('div');
+      container.style.cssText = 'background:white; padding:12px; border-radius:24px; margin-top:8px; display:inline-block;';
+      qrPreviewContainer.appendChild(container);
+      new QRCode(container, { text: uri, width: 120, height: 120, colorDark: '#0f3b3b', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H });
+    }
+    saveSettingsBtn.addEventListener('click', () => {
+      const settings = { receiverName: receiverName.value.trim(), upiId: upiId.value.trim(), paymentNote: paymentNote.value.trim(), currency: 'INR' };
+      if (!settings.upiId) { showToast('⚠️ UPI ID required'); return; }
+      saveSettingsToLS(settings);
+      if (firebaseAvailable && firestore) firestore.doc('settings').set(settings).catch(()=>{});
+      loadSettingsToUI();
+      showToast('✅ Settings saved');
+    });
+    updateSettingsBtn.addEventListener('click', () => {
+      const settings = { receiverName: receiverName.value.trim(), upiId: upiId.value.trim(), paymentNote: paymentNote.value.trim(), currency: 'INR' };
+      if (!settings.upiId) { showToast('⚠️ UPI ID required'); return; }
+      saveSettingsToLS(settings);
+      if (firebaseAvailable && firestore) firestore.doc('settings').set(settings).catch(()=>{});
+      loadSettingsToUI();
+      showToast('🔄 Settings updated');
+    });
+    deleteSettingsBtn.addEventListener('click', () => {
+      localStorage.removeItem('upiSettings');
+      receiverName.value = ''; upiId.value = ''; paymentNote.value = ''; currency.value = 'INR';
+      qrPreviewContainer.innerHTML = '';
+      if (firebaseAvailable && firestore) firestore.doc('settings').delete().catch(()=>{});
+      showToast('🗑 Deleted');
+    });
+
+    // ----- History (unchanged) -----
+    function renderHistory(filter = '') {
+      const history = getHistory();
+      const filtered = history.filter(item => item.note.toLowerCase().includes(filter.toLowerCase()));
+      historyList.innerHTML = '';
+      if (filtered.length === 0) { historyList.innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">No records</div>'; return; }
+      filtered.sort((a,b) => b.id - a.id);
+      filtered.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'history-item';
+        div.innerHTML = `<div class="left"><span class="amount">₹${item.amount.toFixed(2)}</span><span class="note">${item.note}</span><span class="time">${item.date} ${item.time}</span></div><span class="del material-icons" data-id="${item.id}">delete</span>`;
+        historyList.appendChild(div);
+        div.querySelector('.del').addEventListener('click', (e) => {
+          const id = Number(e.target.dataset.id);
+          let hist = getHistory();
+          hist = hist.filter(h => h.id !== id);
+          saveHistoryToLS(hist);
+          renderHistory(historySearch.value);
+          if (firebaseAvailable && firestore) firestore.doc('history').set({ items: hist }).catch(()=>{});
+        });
+      });
+    }
+    deleteAllHistory.addEventListener('click', () => {
+      if (confirm('Delete all history?')) {
+        saveHistoryToLS([]);
+        renderHistory('');
+        if (firebaseAvailable && firestore) firestore.doc('history').set({ items: [] }).catch(()=>{});
+        showToast('🗑 All deleted');
+      }
+    });
+    historySearch.addEventListener('input', () => renderHistory(historySearch.value));
+
+    // ----- QR actions (unchanged) -----
+    downloadQrBtn.addEventListener('click', () => {
+      const canvas = qrCodePreview.querySelector('canvas');
+      if (!canvas) { showToast('⚠️ No QR'); return; }
+      const link = document.createElement('a');
+      link.download = 'upi_qr.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+    shareQrBtn.addEventListener('click', async () => {
+      const canvas = qrCodePreview.querySelector('canvas');
+      if (!canvas) return;
+      try {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (navigator.share) {
+          await navigator.share({ title: 'UPI QR', files: [new File([blob], 'qr.png', { type: 'image/png' })] });
+        } else {
+          showToast('📋 Share not supported');
+        }
+      } catch { showToast('⚠️ Share failed'); }
+    });
+    backFromQrBtn.addEventListener('click', () => switchPage('homePage'));
+
+    // ----- Navigation / tabs (unchanged) -----
+    function switchPage(pageId) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      const target = document.getElementById(pageId);
+      if (target) target.classList.add('active');
+      document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+      document.querySelector(`.tab-bar button[data-page="${pageId}"]`)?.classList.add('active');
+      if (pageId === 'historyPage') renderHistory(historySearch.value);
+      if (pageId === 'settingsPage') loadSettingsToUI();
+    }
+    document.querySelectorAll('.tab-bar button').forEach(btn => {
+      btn.addEventListener('click', () => switchPage(btn.dataset.page));
+    });
+    settingsNav.addEventListener('click', () => switchPage('settingsPage'));
+
+    // ----- Theme toggle (unchanged) -----
+    themeToggle.addEventListener('click', () => {
+      document.body.classList.toggle('dark');
+      themeToggle.textContent = document.body.classList.contains('dark') ? 'light_mode' : 'dark_mode';
+    });
+
+    // ----- Init -----
+    loadSettingsToUI();
+    renderHistory('');
+    expression = '';
+    currentTotal = 0;
+    isResultShown = false;
+    totalDisplay.textContent = '0';
+
+    if (firebaseAvailable && firestore) {
+      firestore.doc('settings').get().then(doc => {
+        if (doc.exists) {
+          const data = doc.data();
+          if (data) { saveSettingsToLS(data); loadSettingsToUI(); }
+        }
+      }).catch(()=>{});
+      firestore.doc('history').get().then(doc => {
+        if (doc.exists && doc.data().items) saveHistoryToLS(doc.data().items);
+      }).catch(()=>{});
+    }
+
+    console.log('🚀 UPI Payment Calculator ready');
+  })();
+</script>
+</body>
+</html>
